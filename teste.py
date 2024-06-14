@@ -31,7 +31,7 @@ def get_access_token (auth_code, filename):
     response = requests.post(url, data=url_data)
 
     print(response)
-    print(response.json)
+    print(response.json())
 
     if response.status_code == 200:
         print('\033[32mAccess Token get SUCESS\033[0m')
