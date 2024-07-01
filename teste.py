@@ -6,6 +6,7 @@ import os
 import pandas
 import os
 from openpyxl import load_workbook
+from openpyxl.styles import Font
 import xlsxwriter
 from urllib.parse import quote, urlparse, parse_qs
 
@@ -13,7 +14,7 @@ class API():
 
     def __init__ (self):
         # código de acesso da pagina localhost
-        self.code = 'Zfi28dv7'
+        self.code = 'GbABzmnq'
 
         # arquivo json que armazena as informações de acesso da digikey
         self.filename = 'digikey_token.json'
@@ -211,6 +212,7 @@ class API():
                 lista.append({'Partnumber': response.json()["ManufacturerPartNumber"], "Description": response.json()["ProductDescription"]})
             # Se não
             else:
+                lista.append({'Partnumber': self.partnumbers[i], "Description": 'Esse componente não foi encontrado'})
                 msg = response.json()
                 print(f'\033[31mFailed to get information for {self.partnumbers[i]}\033[0m')
                 print(response)
@@ -243,9 +245,44 @@ class API():
             data = json.load(file)
 
         for i in range(len(data)):
-            worksheet.write('A' + str(i + 2), data[i]["Partnumber"])
-            worksheet.write('B' + str(i + 2), data[i]["Description"])
+            column1 = 'A' + str(i + 2)
+            column2 = 'B' + str(i + 2)
+            partnumber = data[i]["Partnumber"]
+            description = data[i]["Description"]
+            msg_erro = 'Esse componente não foi encontrado'
+
+            worksheet.write(column1, partnumber)
+            worksheet.write(column2, description)
+
+            if description == msg_erro:
+                # Carregar o arquivo Excel
+                workbook = load_workbook('planilha.xlsx')
+
+                # Listar as planilhas disponíveis no arquivo (opcional)
+                print(workbook.sheetnames)
+
+                # Escolher uma planilha específica para trabalhar
+                sheet = workbook['Sheet1']
+
+                print(sheet[column1].value)
+                print(sheet[column2].value)
+                sheet[column1].font = Font(color="FF0000")
+                sheet[column2].font = Font(color="FF0000")  
         
         workbook.close()
+
+    ########## Tentando alimentar o programa com as listas da DigiKey no usuário da empresa ############
+
+
+
+def get_list_digi_key ():
+        url = "https://auth.digikey.com/as/authorization.oauth2?response_type=code&client_id=pa_wam&redirect_uri=https%3A%2F%2Fwww.digikey.com.br%2Fpa%2Foidc%2Fcb&state=eyJ6aXAiOiJERUYiLCJhbGciOiJkaXIiLCJlbmMiOiJBMTI4Q0JDLUhTMjU2Iiwia2lkIjoiMnMiLCJzdWZmaXgiOiI4RVZOcUUuMTcxOTg1ODgyMiJ9..i87A12ypiS_UeZ6m4byNXA.7lRwklOgteQkRTPVpfl-Ex3ijs-IgyBGhWSxGDhtxKviDxErJQ6VyM-f7rYcVviOcFid9bGGFKFDbLvK-7cptgELA8mHaKcaVW8ev-Zn6qIHYT9yQNB7j8DcxAl4yb1gH0w747Pd_-ZZsYZ6iNP4hKjUYC4EvVGK7UsSHD3Hhrs.gbex3eBIQk0abn5drMQ--w&nonce=o_3hg_1T1sZ4wIMaf1OgQ7Y317dHJP92GmF-YvgBkYU&acr_values=DKMFA&scope=openid%20address%20email%20phone%20profile&vnd_pi_requested_resource=https%3A%2F%2Fwww.digikey.com.br%2FMyDigiKey%2FLogin%3Fsite%3DBR%26lang%3Den%26returnurl%3Dhttps%253A%252F%252Fwww.digikey.com.br%252Fen&vnd_pi_application_name=DigikeyProd-Mydigikey"
+
+        response = requests.get(url, auth=('ivision_luizf', 'BHtec@770'))
+
+        print(response)
+        print(response.json())
+
+# get_list_digi_key()
 
 API()
