@@ -3,18 +3,20 @@ import json
 import time
 import sys
 import os
-import pandas
-import os
 from openpyxl import load_workbook
 from openpyxl.styles import Font
+from openpyxl.utils import get_column_letter
+from openpyxl.styles import numbers
 import xlsxwriter
 from urllib.parse import quote, urlparse, parse_qs
 
 class API():
 
     def __init__ (self):
+        self.partnumbers = []
+
         # código de acesso da pagina localhost
-        self.code = 'GbABzmnq'
+        self.code = 'aKprIAOt'
 
         # arquivo json que armazena as informações de acesso da digikey
         self.filename = 'digikey_token.json'
@@ -47,6 +49,7 @@ class API():
                 self.data = self.get_product_details()
             elif op == 4:
                 self.filling_out_spreadsheet()
+                self.style_sheet()
             elif op == 0:
                 print ("Você saiu do código")
             else:
@@ -161,7 +164,6 @@ class API():
         sheet = workbook['entrada']
 
         vetores = []
-        self.partnumbers = []
         self.quants = []
 
         # Iterar sobre todas as colunas na planilha
@@ -209,10 +211,10 @@ class API():
             if response.status_code == 200:
                 print(f'\033[32mGot information for {self.partnumbers[i]}\033[0m')
                 # alimenta uma lista com um dicionário com o partnumber e a descrição do componente
-                lista.append({'Partnumber': response.json()["ManufacturerPartNumber"], "Description": response.json()["ProductDescription"]})
+                lista.append({'Quantidade': self.quants[i], 'Partnumber': response.json()["ManufacturerPartNumber"], "Description": response.json()["ProductDescription"], "Preco-unitario": response.json()["StandardPricing"][0]["UnitPrice"]})
             # Se não
             else:
-                lista.append({'Partnumber': self.partnumbers[i], "Description": 'Esse componente não foi encontrado'})
+                lista.append({'Quantidade': 'N\A', 'Partnumber': self.partnumbers[i], "Description": 'Esse componente nao foi encontrado', "Preco-unitario": "N\A"})
                 msg = response.json()
                 print(f'\033[31mFailed to get information for {self.partnumbers[i]}\033[0m')
                 print(response)
@@ -232,53 +234,131 @@ class API():
 
     ########## Alimentar a planilha de saída ##########
 
+    # Verifica se a tabela está completa
+    def check_table (self):
+        # Carregar o arquivo Excel
+        workbook = load_workbook('planilha.xlsx')
+
+        # Listar as planilhas disponíveis no arquivo (opcional)
+        print(workbook.sheetnames)
+
+        # Escolher uma planilha específica para trabalhar
+        sheet = workbook['Sheet1']
+
+        for i in range(len(self.data)):
+            cell = 'C' + str(i + 2)
+
+            if sheet[cell] == "N\\A":
+                return False
+
+        return True
+
+    #Descobre o preco total da placa
+    def financial_table (self):
+        # Carregar o arquivo Excel
+        workbook = load_workbook('planilha.xlsx')
+
+        # Listar as planilhas disponíveis no arquivo (opcional)
+        print(workbook.sheetnames)
+
+        # Escolher uma planilha específica para trabalhar
+        sheet = workbook['Sheet1']
+
+        # Calcula o preco total da placa
+        preco_placa = 0
+
+        for i in range(len(self.data)):
+            quant = 'A' + str(i + 2)
+            price = 'D' + str(i + 2)
+
+            if sheet[price].value != 'N\\A':
+                preco_placa += int(sheet[quant].value) * float(sheet[price].value)
+
+        return [round(preco_placa, 2), round(5*preco_placa, 2), round(10*preco_placa, 2), round(25*preco_placa, 2), round(50*preco_placa, 2), round(100*preco_placa, 2)]
+
+
+    # Preenche a planilha de saída
     def filling_out_spreadsheet(self):
         # Criando a planilha
         workbook = xlsxwriter.Workbook('planilha.xlsx')
         worksheet = workbook.add_worksheet()
         
-        # Preenchendo a planilha
-        worksheet.write('A1', 'PartNumber')
-        worksheet.write('B1', 'Description')
+        # Preenchendo os títulos da tabela na planilha
+        worksheet.write('A1', 'Quant.')
+        worksheet.write('B1', 'PartNumber')
+        worksheet.write('C1', 'Description')
+        worksheet.write('D1', 'Preço Unitário')
 
         with open("dados.json", "r") as file:
-            data = json.load(file)
+            self.data = json.load(file)
 
-        for i in range(len(data)):
+        # Alimentando a planilha
+        for i in range(len(self.data)):
             column1 = 'A' + str(i + 2)
             column2 = 'B' + str(i + 2)
-            partnumber = data[i]["Partnumber"]
-            description = data[i]["Description"]
-            msg_erro = 'Esse componente não foi encontrado'
+            column3 = 'C' + str(i + 2)
+            column4 = 'D' + str(i + 2)
+            quant = self.data[i]["Quantidade"]
+            partnumber = self.data[i]["Partnumber"]
+            description = self.data[i]["Description"]
+            preco = self.data[i]["Preco-unitario"]
 
-            worksheet.write(column1, partnumber)
-            worksheet.write(column2, description)
+            worksheet.write(column1, quant)
+            worksheet.write(column2, partnumber)
+            worksheet.write(column3, description)
+            worksheet.write(column4, preco)
 
-            if description == msg_erro:
-                # Carregar o arquivo Excel
-                workbook = load_workbook('planilha.xlsx')
-
-                # Listar as planilhas disponíveis no arquivo (opcional)
-                print(workbook.sheetnames)
-
-                # Escolher uma planilha específica para trabalhar
-                sheet = workbook['Sheet1']
-
-                print(sheet[column1].value)
-                print(sheet[column2].value)
-                sheet[column1].font = Font(color="FF0000")
-                sheet[column2].font = Font(color="FF0000")  
-        
         workbook.close()
+
+        # Verificando se a tabela está completa
+        ver = self.check_table()
+        res = 'y'
+
+        if ver == False:
+            print("Sua planilha está incompleta. Deseja continuar? (y/n)")
+            res = input()
+        
+        if res == 'y':
+            print(self.financial_table())
+
+        # Fazer a tabela financeira na planilha
+
+        
+        
+    # Estiliza a planilha de saída
+    def style_sheet (self):
+        # Carregar o arquivo Excel
+        workbook = load_workbook('planilha.xlsx')
+
+        # Listar as planilhas disponíveis no arquivo (opcional)
+        print(workbook.sheetnames)
+
+        # Escolher uma planilha específica para trabalhar
+        sheet = workbook['Sheet1']
+        
+        # Muda a largura das colunas
+        sheet.column_dimensions['A'].width = 10
+        sheet.column_dimensions['B'].width = 20
+        sheet.column_dimensions['C'].width = 35
+        sheet.column_dimensions['D'].width = 15
+
+
+
+        workbook.save('planilha.xlsx')
 
     ########## Tentando alimentar o programa com as listas da DigiKey no usuário da empresa ############
 
 
 
-def get_list_digi_key ():
-        url = "https://auth.digikey.com/as/authorization.oauth2?response_type=code&client_id=pa_wam&redirect_uri=https%3A%2F%2Fwww.digikey.com.br%2Fpa%2Foidc%2Fcb&state=eyJ6aXAiOiJERUYiLCJhbGciOiJkaXIiLCJlbmMiOiJBMTI4Q0JDLUhTMjU2Iiwia2lkIjoiMnMiLCJzdWZmaXgiOiI4RVZOcUUuMTcxOTg1ODgyMiJ9..i87A12ypiS_UeZ6m4byNXA.7lRwklOgteQkRTPVpfl-Ex3ijs-IgyBGhWSxGDhtxKviDxErJQ6VyM-f7rYcVviOcFid9bGGFKFDbLvK-7cptgELA8mHaKcaVW8ev-Zn6qIHYT9yQNB7j8DcxAl4yb1gH0w747Pd_-ZZsYZ6iNP4hKjUYC4EvVGK7UsSHD3Hhrs.gbex3eBIQk0abn5drMQ--w&nonce=o_3hg_1T1sZ4wIMaf1OgQ7Y317dHJP92GmF-YvgBkYU&acr_values=DKMFA&scope=openid%20address%20email%20phone%20profile&vnd_pi_requested_resource=https%3A%2F%2Fwww.digikey.com.br%2FMyDigiKey%2FLogin%3Fsite%3DBR%26lang%3Den%26returnurl%3Dhttps%253A%252F%252Fwww.digikey.com.br%252Fen&vnd_pi_application_name=DigikeyProd-Mydigikey"
+    def get_list_digi_key (self):
+        url = "https://www.digikey.com/MyDigiKey"
 
-        response = requests.get(url, auth=('ivision_luizf', 'BHtec@770'))
+        url_header = {
+            'x-digikey-locale': 'pt',
+            'Authorization': f"{self.token['token_type']} {self.token['access_token']}",
+            'X-DIGIKEY-Client-Id': self.token['client_id']
+        }
+        response = requests.get(url, url_header)
 
         print(response)
         print(response.json())
