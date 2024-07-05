@@ -4,7 +4,7 @@ import time
 import sys
 import os
 from openpyxl import load_workbook
-from openpyxl.styles import Font
+from openpyxl.styles import Font, Border, Side, Alignment
 from openpyxl.utils import get_column_letter
 from openpyxl.styles import numbers
 import xlsxwriter
@@ -16,7 +16,7 @@ class API():
         self.partnumbers = []
 
         # código de acesso da pagina localhost
-        self.code = 'aKprIAOt'
+        self.code = 'OPA43qkZ'
 
         # arquivo json que armazena as informações de acesso da digikey
         self.filename = 'digikey_token.json'
@@ -172,10 +172,11 @@ class API():
 
         for a in range(2):
             for i in range(len(vetores[a])):
-                if a == 0:
-                    self.partnumbers.append(vetores[a][i])
-                else:
-                    self.quants.append(vetores[a][i])
+                if str(vetores[a][i]) != 'None':
+                    if a == 0:
+                        self.partnumbers.append(vetores[a][i])
+                    else:
+                        self.quants.append(vetores[a][i])
 
         for i in range(len(self.partnumbers)):
             self.partnumbers[i] = str(self.partnumbers[i])
@@ -207,14 +208,20 @@ class API():
 
             response = requests.get(url, headers=url_header)
             
+            print(response.url)
+
             # Se entrou na url
             if response.status_code == 200:
                 print(f'\033[32mGot information for {self.partnumbers[i]}\033[0m')
                 # alimenta uma lista com um dicionário com o partnumber e a descrição do componente
-                lista.append({'Quantidade': self.quants[i], 'Partnumber': response.json()["ManufacturerPartNumber"], "Description": response.json()["ProductDescription"], "Preco-unitario": response.json()["StandardPricing"][0]["UnitPrice"]})
+                if len(response.json()["StandardPricing"]) != 0: 
+                    lista.append({'Quantidade': self.quants[i], 'Partnumber': response.json()["ManufacturerPartNumber"], "Description": response.json()["ProductDescription"], "Preco-unitario": response.json()["StandardPricing"][0]["UnitPrice"]})
+                else:
+                    lista.append({'Quantidade': self.quants[i], 'Partnumber': response.json()["ManufacturerPartNumber"], "Description": response.json()["ProductDescription"], "Preco-unitario": 'null'})
+                    print(f'\033[31mTem algo de errado no preço do componente {self.partnumbers[i]}\033[0m')
             # Se não
             else:
-                lista.append({'Quantidade': 'N\A', 'Partnumber': self.partnumbers[i], "Description": 'Esse componente nao foi encontrado', "Preco-unitario": "N\A"})
+                lista.append({'Quantidade': 'null', 'Partnumber': self.partnumbers[i], "Description": 'Esse componente nao foi encontrado', "Preco-unitario": "null"})
                 msg = response.json()
                 print(f'\033[31mFailed to get information for {self.partnumbers[i]}\033[0m')
                 print(response)
@@ -246,9 +253,9 @@ class API():
         sheet = workbook['Sheet1']
 
         for i in range(len(self.data)):
-            cell = 'C' + str(i + 2)
+            cell = 'A' + str(i + 2)
 
-            if sheet[cell] == "N\\A":
+            if sheet[cell].value == "null":
                 return False
 
         return True
@@ -271,11 +278,10 @@ class API():
             quant = 'A' + str(i + 2)
             price = 'D' + str(i + 2)
 
-            if sheet[price].value != 'N\\A':
+            if sheet[price].value != 'null':
                 preco_placa += int(sheet[quant].value) * float(sheet[price].value)
 
         return [round(preco_placa, 2), round(5*preco_placa, 2), round(10*preco_placa, 2), round(25*preco_placa, 2), round(50*preco_placa, 2), round(100*preco_placa, 2)]
-
 
     # Preenche a planilha de saída
     def filling_out_spreadsheet(self):
@@ -319,10 +325,31 @@ class API():
             res = input()
         
         if res == 'y':
-            print(self.financial_table())
+            tabela_financeira = self.financial_table()
 
         # Fazer a tabela financeira na planilha
+        # Carregar o arquivo Excel
+        workbook = load_workbook('planilha.xlsx')
 
+        # Listar as planilhas disponíveis no arquivo (opcional)
+        print(workbook.sheetnames)
+
+        # Escolher uma planilha específica para trabalhar
+        worksheet = workbook['Sheet1']
+
+        worksheet['F1'].value = "Tabela Financeira"
+        worksheet['F2'].value = "1"
+        worksheet['F3'].value = "5"
+        worksheet['F4'].value = "10"
+        worksheet['F5'].value = "25"
+        worksheet['F6'].value = "50"
+        worksheet['F7'].value = "100"
+
+        for i in range(len(tabela_financeira)):
+            celula = 'G' + str(i + 2)
+            worksheet[celula] = tabela_financeira[i]
+
+        workbook.save('planilha.xlsx')
         
         
     # Estiliza a planilha de saída
@@ -335,15 +362,67 @@ class API():
 
         # Escolher uma planilha específica para trabalhar
         sheet = workbook['Sheet1']
-        
+        col = 0
+
         # Muda a largura das colunas
-        sheet.column_dimensions['A'].width = 10
-        sheet.column_dimensions['B'].width = 20
-        sheet.column_dimensions['C'].width = 35
-        sheet.column_dimensions['D'].width = 15
+        for column_cells in sheet.columns:
+            col+=1
 
+            if col <= 4:
+                max_length = 0
+                column = column_cells[0].column_letter  # Coluna A, B, C, ...
+                for cell in column_cells:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(cell.value)
+                    except:
+                        pass
+                adjusted_width = (max_length + 2)
+                sheet.column_dimensions[column].width = adjusted_width
 
+        #mescla e centralizar duas celulas
+        sheet.merge_cells('F1:G1')
 
+        # Negrito na primeira linha inteira
+        for cell in sheet[1]:
+            cell.font = Font(bold=True)
+
+        # Pintar de vermelho os componentes não encontrados
+        for i in range(len(self.data)):
+            cell1 = 'A' + str(i + 2)
+            cell2 = 'B' + str(i + 2)
+            cell3 = 'C' + str(i + 2)
+            cell4 = 'D' + str(i + 2)
+
+            if sheet[cell1].value == 'null':
+                sheet[cell1].font = Font(color="FF0000")
+                sheet[cell2].font = Font(color="FF0000")
+                sheet[cell3].font = Font(color="FF0000")
+                sheet[cell4].font = Font(color="FF0000")
+        
+        # Defina o estilo da borda
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+
+        # Defina o alinhamento centralizado
+        center_alignment = Alignment(horizontal='center', vertical='center')
+
+        # Aplique a borda e o alinhamento a tabela principal
+        for row in sheet.iter_rows(min_row=1, max_col=4, max_row= (len(self.data)+1)):
+            for cell in row:
+                cell.border = thin_border
+                cell.alignment = center_alignment
+
+        # Aplica a borda e o alinhamento a tabela fianceira
+        for row in sheet.iter_rows(min_row=1, min_col=6, max_col=7, max_row= 7):
+            for cell in row:
+                cell.border = thin_border
+                cell.alignment = center_alignment
+        
         workbook.save('planilha.xlsx')
 
     ########## Tentando alimentar o programa com as listas da DigiKey no usuário da empresa ############
