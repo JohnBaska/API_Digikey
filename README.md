@@ -428,6 +428,36 @@ pintar os componenetes não encontrados de vermelho...
     [...]
 ```
 
+centraliza todas as celulas de tabela e aplica a bordar um pouco mais grossa...
+
+```python
+    [...]
+    # Defina o alinhamento centralizado
+    center_alignment = Alignment(horizontal='center', vertical='center')
+
+    #borda um pouco mais grossa
+    thin_border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+
+    # Aplique a borda e o alinhamento a tabela principal
+    for row in sheet.iter_rows(min_row=1, max_col=3, max_row= (len(self.data)+1)):
+        for cell in row:
+            cell.border = thin_border
+            cell.alignment = center_alignment
+
+    # Aplica a borda e o alinhamento a tabela fianceira
+    for row in sheet.iter_rows(min_row=1, min_col=5, max_col=6, max_row= 7):
+        for cell in row:
+            cell.border = thin_border
+            cell.alignment = center_alignment
+
+    workbook.save('planilha.xlsx')
+```
+
 
 
 
