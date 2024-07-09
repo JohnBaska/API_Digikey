@@ -16,7 +16,7 @@ class API():
         self.partnumbers = []
 
         # código de acesso da pagina localhost
-        self.code = 'OPA43qkZ'
+        self.code = 'AhLKN8TD'
 
         # arquivo json que armazena as informações de acesso da digikey
         self.filename = 'digikey_token.json'
@@ -214,14 +214,17 @@ class API():
             if response.status_code == 200:
                 print(f'\033[32mGot information for {self.partnumbers[i]}\033[0m')
                 # alimenta uma lista com um dicionário com o partnumber e a descrição do componente
-                if len(response.json()["StandardPricing"]) != 0: 
-                    lista.append({'Quantidade': self.quants[i], 'Partnumber': response.json()["ManufacturerPartNumber"], "Description": response.json()["ProductDescription"], "Preco-unitario": response.json()["StandardPricing"][0]["UnitPrice"]})
+                if len(response.json()["StandardPricing"]) != 0 and response.json()["Obsolete"] != True:
+                    if self.quants[i] < 10: 
+                        lista.append({'Quantidade': self.quants[i], 'Partnumber': response.json()["ManufacturerPartNumber"], "Description": response.json()["ProductDescription"], "Preco-unitario": response.json()["StandardPricing"]})
+                    else:
+                        lista.append({'Quantidade': self.quants[i], 'Partnumber': response.json()["ManufacturerPartNumber"], "Description": response.json()["ProductDescription"], "Preco-unitario": response.json()["StandardPricing"]})
                 else:
-                    lista.append({'Quantidade': self.quants[i], 'Partnumber': response.json()["ManufacturerPartNumber"], "Description": response.json()["ProductDescription"], "Preco-unitario": 'null'})
+                    lista.append({'Quantidade': self.quants[i], 'Partnumber': response.json()["ManufacturerPartNumber"], "Description": response.json()["ProductDescription"], "Preco-unitario": []})
                     print(f'\033[31mTem algo de errado no preço do componente {self.partnumbers[i]}\033[0m')
             # Se não
             else:
-                lista.append({'Quantidade': 'null', 'Partnumber': self.partnumbers[i], "Description": 'Esse componente nao foi encontrado', "Preco-unitario": "null"})
+                lista.append({'Quantidade': 'null', 'Partnumber': self.partnumbers[i], "Description": 'Esse componente nao foi encontrado', "Preco-unitario": []})
                 msg = response.json()
                 print(f'\033[31mFailed to get information for {self.partnumbers[i]}\033[0m')
                 print(response)
@@ -261,30 +264,78 @@ class API():
         return True
 
     #Descobre o preco total da placa
-    def financial_table (self):
-        # Carregar o arquivo Excel
-        workbook = load_workbook('planilha.xlsx')
-
-        # Listar as planilhas disponíveis no arquivo (opcional)
-        print(workbook.sheetnames)
-
-        # Escolher uma planilha específica para trabalhar
-        sheet = workbook['Sheet1']
-
+    def financial_table (self, quant_placas):
         # Calcula o preco total da placa
-        preco_placa = 0
+        preco_placas = 0
 
         for i in range(len(self.data)):
-            quant = 'A' + str(i + 2)
-            price = 'D' + str(i + 2)
+            print("processando")
+            quant = self.data[i]["Quantidade"]
 
-            if sheet[price].value != 'null':
-                preco_placa += int(sheet[quant].value) * float(sheet[price].value)
+            if len(self.data[i]['Preco-unitario']) != 0:
+                quant_comp = int(quant) * quant_placas
+                fator = 1
+                price = 0
 
-        return [round(preco_placa, 2), round(5*preco_placa, 2), round(10*preco_placa, 2), round(25*preco_placa, 2), round(50*preco_placa, 2), round(100*preco_placa, 2)]
+                while price == 0:
+                    tabela = self.data[i]["Preco-unitario"][len(self.data[i]["Preco-unitario"]) - fator]
+                        
+
+                    if quant_comp >= tabela["BreakQuantity"]:
+                        price = tabela["UnitPrice"]
+                    else:
+                        fator += 1
+
+                self.lista.append({'partnumber': self.data[i]["Partnumber"], 'unit-price': price, 'all-price': price * quant_comp})
+
+                preco_placas += price * quant_comp
+                    # if quant_comp <= 5:
+                    #     price = self.data[i]["Preco-unitario"][0]["TotalPrice"]
+                    #     preco_placas += quant_comp * price
+
+                    #     quant_comp = 0
+                    # elif quant_comp > 5 and quant_comp < 50:
+                    #     if self.data[i]["Preco-unitario"][1]["BreakQuantity"] == 10:
+                    #         price = self.data[i]["Preco-unitario"][1]["TotalPrice"]
+                            
+                    #         preco_placas += price
+
+                    #         if quant_comp < 10:
+                    #             quant_comp = 0
+                    #         else:
+                    #             quant_comp -= 10
+                    #     else:
+                    #         price = self.data[i]["Preco-unitario"][0]["TotalPrice"]
+                    #         preco_placas += quant_comp * price
+
+                    #         quant_comp = 0
+                    # elif quant_comp >= 50 and quant_comp < 80:
+                    #     price = self.data[i]["Preco-unitario"][2]["TotalPrice"]
+
+                    #     preco_placas += price
+                    #     quant_comp -= 50
+                    # elif quant_comp >= 80 and quant_comp < 500:
+                    #     price = self.data[i]["Preco-unitario"][3]["TotalPrice"]
+
+                    #     preco_placas += price
+                    #     quant_comp -= 100
+                    # elif quant_comp >= 500 and quant_comp < 1000:
+                    #     price = self.data[i]["Preco-unitario"][4]["TotalPrice"]
+
+                    #     preco_placas += price
+                    #     quant_comp -= 500
+                    # elif quant_comp > 1000:
+                    #     price = self.data[i]["Preco-unitario"][5]["TotalPrice"]
+
+                    #     preco_placas += price
+                    #     quant_comp -= 1000 
+
+        return preco_placas
 
     # Preenche a planilha de saída
     def filling_out_spreadsheet(self):
+        self.lista = []
+
         # Criando a planilha
         workbook = xlsxwriter.Workbook('planilha.xlsx')
         worksheet = workbook.add_worksheet()
@@ -293,7 +344,6 @@ class API():
         worksheet.write('A1', 'Quant.')
         worksheet.write('B1', 'PartNumber')
         worksheet.write('C1', 'Description')
-        worksheet.write('D1', 'Preço Unitário')
 
         with open("dados.json", "r") as file:
             self.data = json.load(file)
@@ -303,16 +353,15 @@ class API():
             column1 = 'A' + str(i + 2)
             column2 = 'B' + str(i + 2)
             column3 = 'C' + str(i + 2)
-            column4 = 'D' + str(i + 2)
             quant = self.data[i]["Quantidade"]
             partnumber = self.data[i]["Partnumber"]
             description = self.data[i]["Description"]
-            preco = self.data[i]["Preco-unitario"]
 
             worksheet.write(column1, quant)
             worksheet.write(column2, partnumber)
             worksheet.write(column3, description)
-            worksheet.write(column4, preco)
+
+        #criar 3 colunas com os precos unitários de 1, 10 ou 50 quantidades de componentes
 
         workbook.close()
 
@@ -325,32 +374,52 @@ class API():
             res = input()
         
         if res == 'y':
-            tabela_financeira = self.financial_table()
+            # Fazer a tabela financeira na planilha
+            # Carregar o arquivo Excel
+            workbook = load_workbook('planilha.xlsx')
 
-        # Fazer a tabela financeira na planilha
-        # Carregar o arquivo Excel
-        workbook = load_workbook('planilha.xlsx')
+            # Listar as planilhas disponíveis no arquivo (opcional)
+            print(workbook.sheetnames)
 
-        # Listar as planilhas disponíveis no arquivo (opcional)
-        print(workbook.sheetnames)
+            # Escolher uma planilha específica para trabalhar
+            worksheet = workbook['Sheet1']
 
-        # Escolher uma planilha específica para trabalhar
-        worksheet = workbook['Sheet1']
+            worksheet['E1'].value = "Tabela Financeira"
+            worksheet['E2'].value = "1 Unidade"
+            worksheet['F2'].value = str(round(self.financial_table(1), 2))
+            worksheet['E3'].value = "5 Unidades"
+            worksheet['F3'].value = str(round(self.financial_table(5), 2))
+            worksheet['E4'].value = "10 Unidades"
+            worksheet['F4'].value = str(round(self.financial_table(10), 2))
+            worksheet['E5'].value = "25 Unidades"
+            worksheet['F5'].value = str(round(self.financial_table(25), 2))
+            worksheet['E6'].value = "50 Unidades"
+            worksheet['F6'].value = str(round(self.financial_table(50), 2))
+            worksheet['E7'].value = "100 Unidades"
+            worksheet['F7'].value = str(round(self.financial_table(100), 2))
 
-        worksheet['F1'].value = "Tabela Financeira"
-        worksheet['F2'].value = "1"
-        worksheet['F3'].value = "5"
-        worksheet['F4'].value = "10"
-        worksheet['F5'].value = "25"
-        worksheet['F6'].value = "50"
-        worksheet['F7'].value = "100"
+            workbook.save('planilha.xlsx')
 
-        for i in range(len(tabela_financeira)):
-            celula = 'G' + str(i + 2)
-            worksheet[celula] = tabela_financeira[i]
+            # Criando a planilha
+            workbook = xlsxwriter.Workbook('teste.xlsx')
+            worksheet = workbook.add_worksheet()
 
-        workbook.save('planilha.xlsx')
-        
+            # Alimentando a planilha
+            for i in range(len(self.lista)):
+                column1 = 'A' + str(i + 1)
+                column2 = 'B' + str(i + 1)
+                column3 = 'C' + str(i + 1)
+                partnumber = self.lista[i]['partnumber']
+                unit_preco = self.lista[i]['unit-price']
+                all_preco = self.lista[i]['all-price']
+
+                worksheet.write(column1, partnumber)
+                worksheet.write(column2, unit_preco)
+                worksheet.write(column3, all_preco)
+
+            workbook.close()
+
+
         
     # Estiliza a planilha de saída
     def style_sheet (self):
@@ -368,20 +437,19 @@ class API():
         for column_cells in sheet.columns:
             col+=1
 
-            if col <= 4:
-                max_length = 0
-                column = column_cells[0].column_letter  # Coluna A, B, C, ...
-                for cell in column_cells:
-                    try:
-                        if len(str(cell.value)) > max_length:
-                            max_length = len(cell.value)
-                    except:
-                        pass
-                adjusted_width = (max_length + 2)
-                sheet.column_dimensions[column].width = adjusted_width
+            max_length = 0
+            column = column_cells[0].column_letter  # Coluna A, B, C, ...
+            for cell in column_cells:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(cell.value)
+                except:
+                    pass
+            adjusted_width = (max_length + 2)
+            sheet.column_dimensions[column].width = adjusted_width
 
         #mescla e centralizar duas celulas
-        sheet.merge_cells('F1:G1')
+        sheet.merge_cells('E1:F1')
 
         # Negrito na primeira linha inteira
         for cell in sheet[1]:
@@ -392,13 +460,11 @@ class API():
             cell1 = 'A' + str(i + 2)
             cell2 = 'B' + str(i + 2)
             cell3 = 'C' + str(i + 2)
-            cell4 = 'D' + str(i + 2)
 
             if sheet[cell1].value == 'null':
                 sheet[cell1].font = Font(color="FF0000")
                 sheet[cell2].font = Font(color="FF0000")
                 sheet[cell3].font = Font(color="FF0000")
-                sheet[cell4].font = Font(color="FF0000")
         
         # Defina o estilo da borda
         thin_border = Border(
@@ -412,13 +478,13 @@ class API():
         center_alignment = Alignment(horizontal='center', vertical='center')
 
         # Aplique a borda e o alinhamento a tabela principal
-        for row in sheet.iter_rows(min_row=1, max_col=4, max_row= (len(self.data)+1)):
+        for row in sheet.iter_rows(min_row=1, max_col=3, max_row= (len(self.data)+1)):
             for cell in row:
                 cell.border = thin_border
                 cell.alignment = center_alignment
 
         # Aplica a borda e o alinhamento a tabela fianceira
-        for row in sheet.iter_rows(min_row=1, min_col=6, max_col=7, max_row= 7):
+        for row in sheet.iter_rows(min_row=1, min_col=5, max_col=6, max_row= 7):
             for cell in row:
                 cell.border = thin_border
                 cell.alignment = center_alignment
